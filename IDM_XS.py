@@ -13,7 +13,7 @@ import os
 import time
 
 
-data = pd.read_csv('table_IDM_scanB.csv')
+data = pd.read_csv('../IDM/table_IDM_scanB.csv')
 data = data.values
 
 #Inputs
@@ -130,14 +130,14 @@ def xs_nn(layers=3, neurons=128, dropout_fraction=0.05, L2lambda=0.0):
     return model
 
 #hyperparameter scan
-nlayers = [4,5,6]
-nneurons = [128, 192, 256]
-ndropout_fraction = [0.005, 0.01, 0.02]
-nL2lambda = [0, 0.00001, 0.000001]
+nlayers = [5,6]
+nneurons = [192]
+ndropout_fraction = [0.005]
+nL2lambda = [1e-6]
 
 #define training procedure
 def train(model, X, y, X_test, y_test, std_log_y, name, output_dir = './', exp_xsecs = True, log_mapes = False, iterations=5):
-    early_stopping = EarlyStopping(monitor='val_loss', patience=50, verbose=1)
+    early_stopping = EarlyStopping(monitor='val_loss', patience=20, verbose=1)
     history = History()
     checkpointer = ModelCheckpoint(output_dir + '/' + name, monitor='val_loss', verbose=1, save_best_only=True)
     csv_logger = CSVLogger(output_dir + '/' + name + '.log')
@@ -154,11 +154,11 @@ def train(model, X, y, X_test, y_test, std_log_y, name, output_dir = './', exp_x
             exit()
         if log_mapes == True:
             model.compile(optimizer = opt, loss = log_mape(std_log_y))
-            model.fit(X, y, epochs=500, verbose=1, callbacks=[early_stopping, history, checkpointer, csv_logger, tensorboard], validation_data=(X_test, y_test))
+            model.fit(X, y, epochs=200, verbose=1, callbacks=[early_stopping, history, checkpointer, csv_logger, tensorboard], validation_data=(X_test, y_test))
             model = load_model(output_dir + '/' + name, compile=False, custom_objects={'log_mape': log_mape(std_log_y)})
         if exp_xsecs == True:
             model.compile(optimizer = opt, loss = exp_xsec())
-            model.fit(X, y, epochs=500, verbose=1, callbacks=[early_stopping, history, checkpointer, csv_logger, tensorboard], validation_data=(X_test, y_test))
+            model.fit(X, y, epochs=200, verbose=1, callbacks=[early_stopping, history, checkpointer, csv_logger, tensorboard], validation_data=(X_test, y_test))
             model = load_model(output_dir + '/' + name, compile=False, custom_objects={'exp_xsec': exp_xsec})
         lr = lr/2
     end_time = time.time()
@@ -225,12 +225,14 @@ def evaluate(model, X_test, y_test, mean_log_y, std_log_y, samples=100, output_d
     mape = np.sum(perc_errors)/len(y_pred)
     print(mape)
     print(tpe)
-    np.savez_compressed(str(output_dir) + '/evaluation.npz', X_test = X_test, y_test = y_test, y_pred = mean_y_pred, std_pred = std_y_pred, total_uncertainty = total_uncertainty, mean_std_ratio = mean_std_ratio, perc_errors = perc_errors, mape = mape)
+    np.savez_compressed(str(output_dir) + 'evaluation.npz', X_test = X_test, y_test = y_true_post, y_pred = mean_y_pred, std_pred = std_y_pred, total_uncertainty = total_uncertainty, mean_std_ratio = mean_std_ratio, perc_errors = perc_errors, mape = mape)
     return mean_y_pred, y_true_post, std_y_pred, total_uncertainty, mean_std_ratio, perc_errors, mape
 
 #execute training for 3535 on all hyperparameters, pick best hyperparameters, execute training 
 mean_y_preds, y_true_posts, std_y_preds, mean_std_ratios, perc_errors, mapes = [], [], [], [], [], []
-log = np.empty([len(nlayers) * len(nneurons) * len(ndropout_fraction) * len(nL2lambda),6])
+
+nrows=int(len(nlayers)*len(nneurons)*len(ndropout_fraction)*len(nL2lambda))
+log = np.empty([nrows,6])
 i=0
 for layers in nlayers:
     for neurons in nneurons:
@@ -238,7 +240,7 @@ for layers in nlayers:
             for L2lambda in nL2lambda:
                 dir_name = str(layers) + '_layers_' + str(neurons) + '_neurons_' + str(dropout_fraction) + '_dropout_' + str(L2lambda) + '_L2lambda_3535'
                 os.mkdir(str(layers) + '_layers_' + str(neurons) + '_neurons_' + str(dropout_fraction) + '_dropout_' + str(L2lambda) + '_L2lambda_3535')
-                name = str(layers) + '_layers_' + str(neurons) + '_neurons_' + str(dropout_fraction) + '_dropout_' + str(L2lambda) + '_L2lambda_3535.hdf5'
+                name =str(layers) + '_layers_' + str(neurons) + '_neurons_' + str(dropout_fraction) + '_dropout_' + str(L2lambda) + '_L2lambda_3535.hdf5'
                 model = xs_nn(layers, neurons, dropout_fraction, L2lambda)
                 model = train(model, inputs_train[0], xs_train[0], inputs_test[0], xs_test[0], std_log_y = std_logs_y[0], name = name, output_dir = dir_name, exp_xsecs = True, log_mapes = False)
                 mean_y_pred, y_true_post, std_y_pred, total_uncertainty, mean_std_ratio, perc_error, mape = evaluate(model, inputs_test[0], xs_test[0], mean_logs_y[0], std_logs_y[0], samples=100, output_dir = './' + str(layers) + '_layers_' + str(neurons) + '_neurons_' + str(dropout_fraction) + '_dropout_' + str(L2lambda) + '_L2lambda_3535/')
@@ -261,9 +263,16 @@ for layers in nlayers:
                 i = i + 1
 
 #choosing best hyperparameters
-best_idx = np.int(np.argmin(log[:,4]))
+print(log)
+best_idx = np.argmin(log[:,4])
+best_ix_row=np.take(log,best_idx)
+print(best_idx)
+print(type(best_idx))
+print(best_ix_row)
+
 f = open('mapes.txt', 'a')
-f.write("BEST PARAMS:\n" + "LAYERS: " + str(log[best_idx,0]) + " NEURONS: " + str(log[best_idx,1]) + " DROPOUT FRACTION: " + str(log[best_idx,2]) + " L2 lambda: " + str(log[best_idx,3]) + " MAPE: " + str(log[best_idx,4]) + " TOTAL UNCERTAINTY: " + str(log[best_idx,5]))
+f.write("BEST PARAMS:\n" + "LAYERS: " + str(log.item((int(best_idx),0))) + " NEURONS: " + str(log.item((int(best_idx),1))) + " DROPOUT FRACTION: " + str(log.item((int(best_idx),2))) + " L2 lambda: " + str(log.item((int(best_idx),3))) + " MAPE: " + str(log.item((int(best_idx),4))) + " TOTAL UNCERTAINTY: " + str(log.item((int(best_idx),5))))
+        
 f.close()
 
 #training neural networks for the remaining xs on best hyperparameters for 3535
@@ -271,7 +280,8 @@ names = ['3636.hdf5', '3737.hdf5', '3537.hdf5', '3637.hdf5', '3735.hdf5', '3736.
 xs_mean_y_preds, xs_y_true_posts, xs_std_y_preds, xs_mean_std_ratios, xs_perc_errors, xs_mapes = [], [], [], [], [], []
 for j in range(1,8):
     name = names[j-1]
-    model = xs_nn(log[best_idx,0], log[best_idx,1], log[best_idx,2], log[best_idx,3])
+    model = xs_nn(int(log[best_idx,0]), int(log[best_idx,1]), float(log[best_idx,2]), float(log[best_idx,3]))
+    #model = xs_nn(int(log.item(int(best_idx),0)),int(log.item(int(best_idx),1)), float(log.item(int(best_idx),2)), float(log.item(int(best_idx),3)))
     model = train(model, inputs_train[j], xs_train[j], inputs_test[j], xs_test[j], std_log_y = std_logs_y[j], name = name, exp_xsecs = True, log_mapes = False)
     mean_y_pred, y_true_post, std_y_pred, total_uncertainty, mean_std_ratio, perc_error, mape = evaluate(model, inputs_test[j], xs_test[j], mean_logs_y[j], std_logs_y[j], samples=100, output_dir='./' + name)
     xs_mean_y_preds.append(mean_y_pred)
@@ -280,16 +290,6 @@ for j in range(1,8):
     xs_mean_std_ratios.append(mean_std_ratio)
     xs_perc_errors.append(perc_error)
     xs_mapes.append(mape)
-    f = open('mapes.txt', 'a')
-    f.write("LAYERS: " + str(layers) + " NEURONS: " + str(neurons) + " DROPOUT FRACTION: " + str(dropout_fraction) + " L2 lambda: " + str(L2lambda) + " MAPE: " + str(mape) + " TOTAL UNCERTAINTY: " + str(total_uncertainty) + "\n")
-    f.close()
-    log[i,0] = layers
-    log[i,1] = neurons
-    log[i,2] = dropout_fraction
-    log[i,3] = L2lambda
-    log[i,4] = mape
-    log[i,5] = total_uncertainty
-    K.clear_session()
 
 #plots 
 #def all_plots():
