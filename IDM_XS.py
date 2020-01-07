@@ -13,7 +13,7 @@ import os
 import time
 
 
-data = pd.read_csv('../IDM/table_IDM_scanB.csv')
+data = pd.read_csv('table_IDM_scanB.csv')
 data = data.values
 
 #Inputs
@@ -83,7 +83,7 @@ def xs_preproc(z_score = False, shifted_log = True):
 xs = xs_preproc()
 
 ###splitting data in training and validation data
-train_fraction = 0.9
+train_fraction = 0.7
 inputs_train = []
 inputs_test = []
 for X in inputs:
@@ -132,8 +132,8 @@ def xs_nn(layers=3, neurons=128, dropout_fraction=0.05, L2lambda=0.0):
 #hyperparameter scan
 nlayers = [5,6]
 nneurons = [192]
-ndropout_fraction = [0.005]
-nL2lambda = [1e-6]
+ndropout_fraction = [0.005,0.01]
+nL2lambda = [1e-5,1e-6,1e-7]
 
 #define training procedure
 def train(model, X, y, X_test, y_test, std_log_y, name, output_dir = './', exp_xsecs = True, log_mapes = False, iterations=5):
@@ -232,39 +232,51 @@ def evaluate(model, X_test, y_test, mean_log_y, std_log_y, samples=100, output_d
 mean_y_preds, y_true_posts, std_y_preds, mean_std_ratios, perc_errors, mapes = [], [], [], [], [], []
 
 nrows=int(len(nlayers)*len(nneurons)*len(ndropout_fraction)*len(nL2lambda))
-log = np.empty([nrows,6])
+train_reps = 5
+log = np.empty([nrows,6,train_reps])
 i=0
+criterium = np.empty(nrows)
 for layers in nlayers:
     for neurons in nneurons:
         for dropout_fraction in ndropout_fraction:
             for L2lambda in nL2lambda:
-                dir_name = str(layers) + '_layers_' + str(neurons) + '_neurons_' + str(dropout_fraction) + '_dropout_' + str(L2lambda) + '_L2lambda_3535'
-                os.mkdir(str(layers) + '_layers_' + str(neurons) + '_neurons_' + str(dropout_fraction) + '_dropout_' + str(L2lambda) + '_L2lambda_3535')
-                name =str(layers) + '_layers_' + str(neurons) + '_neurons_' + str(dropout_fraction) + '_dropout_' + str(L2lambda) + '_L2lambda_3535.hdf5'
-                model = xs_nn(layers, neurons, dropout_fraction, L2lambda)
-                model = train(model, inputs_train[0], xs_train[0], inputs_test[0], xs_test[0], std_log_y = std_logs_y[0], name = name, output_dir = dir_name, exp_xsecs = True, log_mapes = False)
-                mean_y_pred, y_true_post, std_y_pred, total_uncertainty, mean_std_ratio, perc_error, mape = evaluate(model, inputs_test[0], xs_test[0], mean_logs_y[0], std_logs_y[0], samples=100, output_dir = './' + str(layers) + '_layers_' + str(neurons) + '_neurons_' + str(dropout_fraction) + '_dropout_' + str(L2lambda) + '_L2lambda_3535/')
-                mean_y_preds.append(mean_y_pred)
-                y_true_posts.append(y_true_post)
-                std_y_preds.append(std_y_pred)
-                mean_std_ratios.append(mean_std_ratio)
-                perc_errors.append(perc_error)
-                mapes.append(mape)
+                for train_rep in range(0,train_reps):
+                    dir_name = str(layers) + '_layers_' + str(neurons) + '_neurons_' + str(dropout_fraction) + '_dropout_' + str(L2lambda) + '_L2lambda_3535' + '_REP_' + str(train_rep)
+                    os.mkdir(str(layers) + '_layers_' + str(neurons) + '_neurons_' + str(dropout_fraction) + '_dropout_' + str(L2lambda) + '_L2lambda_3535' + '_REP_' + str(train_rep))
+                    name =str(layers) + '_layers_' + str(neurons) + '_neurons_' + str(dropout_fraction) + '_dropout_' + str(L2lambda) + '_L2lambda_3535' + '_REP_' + str(train_rep) + '.hdf5'
+                    model = xs_nn(layers, neurons, dropout_fraction, L2lambda)
+                    model = train(model, inputs_train[0], xs_train[0], inputs_test[0], xs_test[0], std_log_y = std_logs_y[0], name = name, output_dir = dir_name, exp_xsecs = True, log_mapes = False)
+                    mean_y_pred, y_true_post, std_y_pred, total_uncertainty, mean_std_ratio, perc_error, mape = evaluate(model, inputs_test[0], xs_test[0], mean_logs_y[0], std_logs_y[0], samples=100, output_dir = './' + str(layers) + '_layers_' + str(neurons) + '_neurons_' + str(dropout_fraction) + '_dropout_' + str(L2lambda) + '_L2lambda_3535_REP_' + str(train_rep) + '/')
+                    mean_y_preds.append(mean_y_pred)
+                    y_true_posts.append(y_true_post)
+                    std_y_preds.append(std_y_pred)
+                    mean_std_ratios.append(mean_std_ratio)
+                    perc_errors.append(perc_error)
+                    mapes.append(mape)
+                    f = open('mapes.txt', 'a')
+                    f.write("REP " + str(train_reps) + " LAYERS: " + str(layers) + " NEURONS: " + str(neurons) + " DROPOUT FRACTION: " + str(dropout_fraction) + " L2 lambda: " + str(L2lambda) + " MAPE: " + str(mape) + " TOTAL UNCERTAINTY: " + str(total_uncertainty) + "\n")
+                    f.close()
+                    log[i,0,train_rep] = layers
+                    log[i,1,train_rep] = neurons
+                    log[i,2,train_rep] = dropout_fraction
+                    log[i,3,train_rep] = L2lambda
+                    log[i,4,train_rep] = mape
+                    log[i,5,train_rep] = total_uncertainty
+                    K.clear_session()
+                mape_mean = np.mean(log[i,4,:])
+                mape_std = np.std(log[i,4,:])
+                min_mape = np.min(log[i,4,:])
+                max_mape = np.max(log[i,4,:])
+                criterium[i] = mape_mean + mape_std
                 f = open('mapes.txt', 'a')
-                f.write("LAYERS: " + str(layers) + " NEURONS: " + str(neurons) + " DROPOUT FRACTION: " + str(dropout_fraction) + " L2 lambda: " + str(L2lambda) + " MAPE: " + str(mape) + " TOTAL UNCERTAINTY: " + str(total_uncertainty) + "\n")
+                f.write("MEAN MAPE : " + str(mape_mean) + " MAPE STD : " + str(mape_std) + " MIN MAPE : " + str(min_mape) + " MAX MAPE : " + str(max_mape))
                 f.close()
-                log[i,0] = layers
-                log[i,1] = neurons
-                log[i,2] = dropout_fraction
-                log[i,3] = L2lambda
-                log[i,4] = mape
-                log[i,5] = total_uncertainty
-                K.clear_session()
                 i = i + 1
 
 #choosing best hyperparameters
 print(log)
-best_idx = np.argmin(log[:,4])
+#best_idx = np.argmin(log[:,4,:])
+best_idx = np.argmin(criterium)
 best_ix_row=np.take(log,best_idx)
 print(best_idx)
 print(type(best_idx))
