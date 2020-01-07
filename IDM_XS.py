@@ -254,7 +254,7 @@ for layers in nlayers:
                     perc_errors.append(perc_error)
                     mapes.append(mape)
                     f = open('mapes.txt', 'a')
-                    f.write("REP " + str(train_reps) + " LAYERS: " + str(layers) + " NEURONS: " + str(neurons) + " DROPOUT FRACTION: " + str(dropout_fraction) + " L2 lambda: " + str(L2lambda) + " MAPE: " + str(mape) + " TOTAL UNCERTAINTY: " + str(total_uncertainty) + "\n")
+                    f.write("REP " + str(train_rep) + " LAYERS: " + str(layers) + " NEURONS: " + str(neurons) + " DROPOUT FRACTION: " + str(dropout_fraction) + " L2 lambda: " + str(L2lambda) + " MAPE: " + str(mape) + " TOTAL UNCERTAINTY: " + str(total_uncertainty) + "\n")
                     f.close()
                     log[i,0,train_rep] = layers
                     log[i,1,train_rep] = neurons
