@@ -130,14 +130,14 @@ def xs_nn(layers=3, neurons=128, dropout_fraction=0.05, L2lambda=0.0):
     return model
 
 #hyperparameter scan
-nlayers = [5,6]
+nlayers = [6]
 nneurons = [192]
-ndropout_fraction = [0.005,0.01]
-nL2lambda = [1e-5,1e-6,1e-7]
+ndropout_fraction = [0.01]
+nL2lambda = [1e-5]
 
 #define training procedure
-def train(model, X, y, X_test, y_test, std_log_y, name, output_dir = './', exp_xsecs = True, log_mapes = False, iterations=5):
-    early_stopping = EarlyStopping(monitor='val_loss', patience=20, verbose=1)
+def train(model, X, y, X_test, y_test, std_log_y, name, output_dir = './', exp_xsecs = True, log_mapes = False, iterations=10):
+    early_stopping = EarlyStopping(monitor='val_loss', patience=50, verbose=1)
     history = History()
     checkpointer = ModelCheckpoint(output_dir + '/' + name, monitor='val_loss', verbose=1, save_best_only=True)
     csv_logger = CSVLogger(output_dir + '/' + name + '.log')
@@ -154,11 +154,11 @@ def train(model, X, y, X_test, y_test, std_log_y, name, output_dir = './', exp_x
             exit()
         if log_mapes == True:
             model.compile(optimizer = opt, loss = log_mape(std_log_y))
-            model.fit(X, y, epochs=200, verbose=1, callbacks=[early_stopping, history, checkpointer, csv_logger, tensorboard], validation_data=(X_test, y_test))
+            model.fit(X, y, epochs=500, verbose=1, callbacks=[early_stopping, history, checkpointer, csv_logger, tensorboard], validation_data=(X_test, y_test))
             model = load_model(output_dir + '/' + name, compile=False, custom_objects={'log_mape': log_mape(std_log_y)})
         if exp_xsecs == True:
             model.compile(optimizer = opt, loss = exp_xsec())
-            model.fit(X, y, epochs=200, verbose=1, callbacks=[early_stopping, history, checkpointer, csv_logger, tensorboard], validation_data=(X_test, y_test))
+            model.fit(X, y, epochs=500, verbose=1, callbacks=[early_stopping, history, checkpointer, csv_logger, tensorboard], validation_data=(X_test, y_test))
             model = load_model(output_dir + '/' + name, compile=False, custom_objects={'exp_xsec': exp_xsec})
         lr = lr/2
     end_time = time.time()
@@ -269,7 +269,7 @@ for layers in nlayers:
                 max_mape = np.max(log[i,4,:])
                 criterium[i] = mape_mean + mape_std
                 f = open('mapes.txt', 'a')
-                f.write("MEAN MAPE : " + str(mape_mean) + " MAPE STD : " + str(mape_std) + " MIN MAPE : " + str(min_mape) + " MAX MAPE : " + str(max_mape))
+                f.write("MEAN MAPE : " + str(mape_mean) + " MAPE STD : " + str(mape_std) + " MIN MAPE : " + str(min_mape) + " MAX MAPE : " + str(max_mape) + "\n")
                 f.close()
                 i = i + 1
 
@@ -282,17 +282,17 @@ print(best_idx)
 print(type(best_idx))
 print(best_ix_row)
 
-f = open('mapes.txt', 'a')
-f.write("BEST PARAMS:\n" + "LAYERS: " + str(log.item((int(best_idx),0))) + " NEURONS: " + str(log.item((int(best_idx),1))) + " DROPOUT FRACTION: " + str(log.item((int(best_idx),2))) + " L2 lambda: " + str(log.item((int(best_idx),3))) + " MAPE: " + str(log.item((int(best_idx),4))) + " TOTAL UNCERTAINTY: " + str(log.item((int(best_idx),5))))
+#f = open('mapes.txt', 'a')
+#f.write("BEST PARAMS:\n" + "LAYERS: " + str(log[int(best_idx),0,0]) + " NEURONS: " + str(log[int(best_idx),1])) + " DROPOUT FRACTION: " + str(log.item((int(best_idx),2))) + " L2 lambda: " + str(log.item((int(best_idx),3))) + " MAPE: " + str(log.item((int(best_idx),4))) + " TOTAL UNCERTAINTY: " + str(log.item((int(best_idx),5))))
         
-f.close()
+#f.close()
 
 #training neural networks for the remaining xs on best hyperparameters for 3535
 names = ['3636.hdf5', '3737.hdf5', '3537.hdf5', '3637.hdf5', '3735.hdf5', '3736.hdf5', '3536.hdf5'] 
 xs_mean_y_preds, xs_y_true_posts, xs_std_y_preds, xs_mean_std_ratios, xs_perc_errors, xs_mapes = [], [], [], [], [], []
 for j in range(1,8):
     name = names[j-1]
-    model = xs_nn(int(log[best_idx,0]), int(log[best_idx,1]), float(log[best_idx,2]), float(log[best_idx,3]))
+    model = xs_nn(6, 192, 0.01, 1e-5)
     #model = xs_nn(int(log.item(int(best_idx),0)),int(log.item(int(best_idx),1)), float(log.item(int(best_idx),2)), float(log.item(int(best_idx),3)))
     model = train(model, inputs_train[j], xs_train[j], inputs_test[j], xs_test[j], std_log_y = std_logs_y[j], name = name, exp_xsecs = True, log_mapes = False)
     mean_y_pred, y_true_post, std_y_pred, total_uncertainty, mean_std_ratio, perc_error, mape = evaluate(model, inputs_test[j], xs_test[j], mean_logs_y[j], std_logs_y[j], samples=100, output_dir='./' + name)
